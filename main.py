@@ -39,35 +39,35 @@ class FuelTrackingBot:
             )
             self.gc = gspread.authorize(self.credentials)
             self.spreadsheet = self.gc.open_by_key(spreadsheet_id)
-            logger.info("✅ Успішно підключились до Google Sheets")
+            logger.info("✅ Успешно подключились к Google Sheets")
             
-            # Завантажуємо списки автомобілів та генераторів
+            # Загружаем списки автомобилей и генераторов
             self.load_vehicles_and_generators()
             
         except FileNotFoundError:
-            logger.error("❌ Файл credentials.json не знайдено!")
-            raise Exception("Файл з обліковими даними Google не знайдено. Перевірте шлях до credentials.json")
+            logger.error("❌ Файл credentials.json не найден!")
+            raise Exception("Файл с учетными данными Google не найден. Проверьте путь к credentials.json")
         except gspread.exceptions.APIError as e:
             if "SERVICE_DISABLED" in str(e):
-                logger.error("❌ Google Sheets API не увімкнено!")
+                logger.error("❌ Google Sheets API не включен!")
                 raise Exception(
-                    "Google Sheets API не увімкнено у вашому проекті!\n"
-                    "Увімкніть API за посиланням: https://console.developers.google.com/apis/api/sheets.googleapis.com/overview\n"
-                    "Також увімкніть Google Drive API: https://console.developers.google.com/apis/api/drive.googleapis.com/overview"
+                    "Google Sheets API не включен в вашем проекте!\n"
+                    "Включите API по ссылке: https://console.developers.google.com/apis/api/sheets.googleapis.com/overview\n"
+                    "Также включите Google Drive API: https://console.developers.google.com/apis/api/drive.googleapis.com/overview"
                 )
             else:
-                logger.error(f"❌ Помилка Google Sheets API: {e}")
-                raise Exception(f"Помилка доступу до Google Sheets: {e}")
+                logger.error(f"❌ Ошибка Google Sheets API: {e}")
+                raise Exception(f"Ошибка доступа к Google Sheets: {e}")
         except PermissionError:
-            logger.error("❌ Немає доступу до Google Sheets!")
+            logger.error("❌ Нет доступа к Google Sheets!")
             raise Exception(
-                "Немає доступу до Google Таблиці!\n"
-                "1. Переконайтеся, що увімкнено Google Sheets API та Google Drive API\n"
-                "2. Перевірте, що Service Account має доступ до таблиці\n"
-                "3. Зачекайте кілька хвилин після увімкнення API"
+                "Нет доступа к Google Таблице!\n"
+                "1. Убедитесь, что включены Google Sheets API и Google Drive API\n"
+                "2. Проверьте, что Service Account имеет доступ к таблице\n"
+                "3. Подождите несколько минут после включения API"
             )
 
-        # Регулярные выражения для парсинга сообщений (улучшенные)
+        # Регулярные выражения для парсинга сообщений
         self.purchase_pattern = re.compile(
             r'(?P<car_number>\d+)\s*(?:\n|\s)+[Кк]упил\s+(?P<volume>\d+)\s*литр[а-я]*\s*по\s+(?P<price>\d+(?:[.,]\d+)?)\s*грн',
             re.IGNORECASE | re.MULTILINE
@@ -87,23 +87,23 @@ class FuelTrackingBot:
         self.user_states = {}
 
     def load_vehicles_and_generators(self):
-        """Завантаження списку автомобілів та генераторів з таблиці"""
+        """Загружаем список автомобилей и генераторов из таблицы"""
         try:
-            # Створюємо або отримуємо лист з автомобілями
-            vehicles_sheet = self.get_or_create_worksheet("Автомобілі")
-            if len(vehicles_sheet.get_all_values()) <= 1:  # Якщо лист порожній (тільки заголовки)
-                vehicles_sheet.append_row(["Номер", "Назва", "Тип"])
+            # Создаём или получаем лист с автомобилями
+            vehicles_sheet = self.get_or_create_worksheet("Автомобили")
+            if len(vehicles_sheet.get_all_values()) <= 1:  # Если лист пустой (только заголовки)
+                vehicles_sheet.append_row(["Номер", "Название", "Тип"])
 
-            # Завантажуємо дані
+            # Загружаем данные
             vehicles_data = vehicles_sheet.get_all_records()
-            self.supported_cars = [str(v['Номер']) for v in vehicles_data if v['Тип'] == 'Автомобіль']
+            self.supported_cars = [str(v['Номер']) for v in vehicles_data if v['Тип'] == 'Автомобиль']
             self.supported_generators = [str(v['Номер']) for v in vehicles_data if v['Тип'] == 'Генератор']
             
-            logger.info(f"✅ Завантажено {len(self.supported_cars)} автомобілів та {len(self.supported_generators)} генераторів")
+            logger.info(f"✅ Загружено {len(self.supported_cars)} автомобилей и {len(self.supported_generators)} генераторов")
             
         except Exception as e:
-            logger.error(f"❌ Помилка при завантаженні списку автомобілів та генераторів: {e}")
-            raise Exception("Не вдалося завантажити список автомобілів та генераторів")
+            logger.error(f"❌ Ошибка при загрузке списка автомобилей и генераторов: {e}")
+            raise Exception("Не удалось загрузить список автомобилей и генераторов")
 
     def test_connection(self):
         """Тестирование подключения к Google Sheets"""
@@ -123,15 +123,15 @@ class FuelTrackingBot:
         except gspread.WorksheetNotFound:
             worksheet = self.spreadsheet.add_worksheet(title=sheet_name, rows=1000, cols=10)
             # Додаємо заголовки в залежності від типу листа
-            if sheet_name == "Автомобілі":
-                headers = ["Номер", "Назва", "Тип"]
+            if sheet_name == "Автомобили":
+                headers = ["Номер", "Название", "Тип"]
             elif "Авто" in sheet_name:
                 headers = ["Дата", "Тип операции", "Объём (л)", "Цена за литр", "Общая стоимость", "Пробег",
                            "Пользователь", "Фото"]
             elif "Генератор" in sheet_name:
                 headers = ["Дата", "Объём (л)", "Цена за литр", "Общая стоимость", "Моточасы", "Пользователь", "Фото"]
             else:
-                headers = ["Дані"]
+                headers = ["Данные"]
 
             worksheet.append_row(headers)
 
@@ -148,7 +148,7 @@ class FuelTrackingBot:
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-        cars_list = "\n".join([f"🚗 Авто {car}" for car in self.supported_cars])
+        cars_list = "\n".join([f"🚗 Автомобиль {car}" for car in self.supported_cars])
         generators_list = "\n".join([f"⚡ Генератор {gen}" for gen in self.supported_generators])
 
         welcome_message = f"""
@@ -162,7 +162,7 @@ class FuelTrackingBot:
 /history [номер] - последние операции
 /templates - примеры сообщений
 
-🚗 **Доступные авто:**
+🚗 **Доступные автомобили:**
 {cars_list}
 
 ⚡ **Доступные генераторы:**
@@ -173,20 +173,20 @@ class FuelTrackingBot:
         await update.message.reply_text(welcome_message, reply_markup=reply_markup)
 
     async def templates(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Команда /шаблоны"""
+        """Команда /templates"""
         templates_message = """
 📑 Шаблоны ввода данных:
 
 1️⃣ Закупка топлива:
 1. Нажмите кнопку "🟢 Закупка топлива"
-2. Введите номер авто (например: 5513)
+2. Введите номер автомобиля (например: 5513)
 3. Введите объем и цену в формате:
    200 литров по 58 грн
 4. Добавьте фото чека к сообщению
 
 2️⃣ Заправка автомобиля:
 1. Нажмите кнопку "🔵 Заправка авто"
-2. Введите номер авто (например: 5513)
+2. Введите номер автомобиля (например: 5513)
 3. Введите объем и пробег в формате:
    30 литров. Пробег: 125000 км
 4. Добавьте фото чека к сообщению
@@ -220,7 +220,7 @@ class FuelTrackingBot:
             return
 
         try:
-            worksheet_name = f"Авто {car_number}"
+            worksheet_name = f"Автомобиль {car_number}"
             worksheet = self.get_or_create_worksheet(worksheet_name)
             records = worksheet.get_all_records()
             
@@ -278,7 +278,7 @@ class FuelTrackingBot:
             return
 
         try:
-            worksheet_name = f"Авто {car_number}"
+            worksheet_name = f"Автомобиль {car_number}"
             worksheet = self.get_or_create_worksheet(worksheet_name)
             records = worksheet.get_all_records()
 
@@ -516,7 +516,7 @@ class FuelTrackingBot:
         total_cost = volume * price
 
         try:
-            worksheet_name = f"Авто {car_number}"
+            worksheet_name = f"Автомобиль {car_number}"
             worksheet = self.get_or_create_worksheet(worksheet_name)
 
             current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -535,7 +535,7 @@ class FuelTrackingBot:
             worksheet.append_row(row_data)
 
             await update.message.reply_text(
-                f"✅ Принято! {volume} литров по {price} грн добавлено на склад авто {car_number} с фото чека.\n"
+                f"✅ Принято! {volume} литров по {price} грн добавлено на склад автомобиль {car_number} с фото чека.\n"
                 f"💰 Общая стоимость: {total_cost} грн"
             )
 
@@ -627,7 +627,7 @@ class FuelTrackingBot:
                 await update.message.reply_text("⚠️ Ошибка: Пробег не может быть отрицательным")
                 return
 
-            worksheet_name = f"Авто {car_number}"
+            worksheet_name = f"Автомобиль {car_number}"
             worksheet = self.get_or_create_worksheet(worksheet_name)
             
             current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
