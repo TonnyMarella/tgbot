@@ -532,6 +532,12 @@ class FuelTrackingBot:
 
             current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+            # Форматування photo_url для Google Sheets (клікабельна мініатюра)
+            formula = None
+            if photo_url:
+                formula = f'=HYPERLINK("{photo_url}"; IMAGE("{photo_url}"))'
+
+            # Додаємо рядок з простим лінком у полі фото
             row_data = [
                 current_date,
                 "Закупка",
@@ -540,10 +546,16 @@ class FuelTrackingBot:
                 total_cost,
                 "",  # Пробег не применим для закупки
                 username,
-                photo_url
+                photo_url if photo_url else ""
             ]
 
             worksheet.append_row(row_data)
+
+            # Якщо є фото, оновлюємо клітинку на формулу
+            if formula:
+                last_row = len(worksheet.get_all_values())
+                photo_col = len(row_data)  # фото завжди останнє поле
+                worksheet.update_cell(last_row, photo_col, formula)
 
             await update.message.reply_text(
                 f"✅ Принято! {volume} литров по {price} грн добавлено на склад автомобиль {car_number} с фото чека.\n"
@@ -616,6 +628,11 @@ class FuelTrackingBot:
             
             current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+            # Форматування photo_url для Google Sheets (клікабельна мініатюра)
+            formula = None
+            if photo_url:
+                formula = f'=HYPERLINK("{photo_url}"; IMAGE("{photo_url}"))'
+
             row_data = [
                 current_date,
                 "Заправка",
@@ -624,7 +641,7 @@ class FuelTrackingBot:
                 "",  # Общая стоимость не применима для заправки
                 mileage,
                 username,
-                photo_url
+                photo_url if photo_url else ""
             ]
             
             worksheet.append_row(row_data)
@@ -635,6 +652,12 @@ class FuelTrackingBot:
             total_consumed = sum(float(r.get('Объём (л)', 0) or 0) for r in records if r.get('Тип операции') == 'Заправка')
             balance = total_purchased - total_consumed
             
+            # Якщо є фото, оновлюємо клітинку на формулу
+            if formula:
+                last_row = len(worksheet.get_all_values())
+                photo_col = len(row_data)  # фото завжди останнє поле
+                worksheet.update_cell(last_row, photo_col, formula)
+
             await update.message.reply_text(
                 f"✅ Заправка {volume} л записана с фото чека.\n"
                 f"📏 Пробег: {mileage} км\n"
@@ -696,6 +719,11 @@ class FuelTrackingBot:
             
             current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+            # Форматування photo_url для Google Sheets (клікабельна мініатюра)
+            formula = None
+            if photo_url:
+                formula = f'=HYPERLINK("{photo_url}"; IMAGE("{photo_url}"))'
+
             row_data = [
                 current_date,
                 volume,
@@ -703,11 +731,17 @@ class FuelTrackingBot:
                 total_cost,
                 hours,
                 username,
-                photo_url
+                photo_url if photo_url else ""
             ]
             
             worksheet.append_row(row_data)
             
+            # Якщо є фото, оновлюємо клітинку на формулу
+            if formula:
+                last_row = len(worksheet.get_all_values())
+                photo_col = len(row_data)  # фото завжди останнє поле
+                worksheet.update_cell(last_row, photo_col, formula)
+
             await update.message.reply_text(
                 f"✅ Записано: Генератор {car_number} с фото чека\n"
                 f"⛽ Объем: {volume} л\n"
