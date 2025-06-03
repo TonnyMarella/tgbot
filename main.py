@@ -497,6 +497,13 @@ class FuelTrackingBot:
 
     async def handle_purchase(self, update: Update, match, username: str, photo_url: str = None):
         """Обробка закупівлі палива"""
+        if not photo_url:
+            await update.message.reply_text(
+                "⚠️ Помилка: Фото чека обов'язкове для закупівлі палива.\n"
+                "Спробуйте знову."
+            )
+            return
+
         car_number = match.group('car_number')
 
         if not self.validate_car_number(car_number):
@@ -529,9 +536,8 @@ class FuelTrackingBot:
 
             worksheet.append_row(row_data)
 
-            photo_status = "з фото чека" if photo_url else "без фото"
             await update.message.reply_text(
-                f"✅ Прийнято! {volume} літрів по {price} грн додано на склад авто {car_number} {photo_status}.\n"
+                f"✅ Прийнято! {volume} літрів по {price} грн додано на склад авто {car_number} з фото чека.\n"
                 f"💰 Загальна вартість: {total_cost} грн"
             )
 
@@ -595,6 +601,13 @@ class FuelTrackingBot:
 
     async def handle_refuel(self, update: Update, match, username: str, photo_url: str = None):
         """Обробка заправки автомобіля"""
+        if not photo_url:
+            await update.message.reply_text(
+                "⚠️ Помилка: Фото чека обов'язкове для закупівлі палива.\n"
+                "Спробуйте знову."
+            )
+            return
+
         car_number = match.group('car_number')
         
         if not self.validate_car_number(car_number):
@@ -640,9 +653,8 @@ class FuelTrackingBot:
             total_consumed = sum(float(r.get('Объём (л)', 0) or 0) for r in records if r.get('Тип операции') == 'Заправка')
             balance = total_purchased - total_consumed
             
-            photo_status = "з фото чека" if photo_url else "без фото"
             await update.message.reply_text(
-                f"✅ Заправка {volume} л записана {photo_status}.\n"
+                f"✅ Заправка {volume} л записана з фото чека.\n"
                 f"📏 Пробіг: {mileage} км\n"
                 f"📊 Залишок на складі: {balance:.1f} л"
             )
@@ -662,6 +674,13 @@ class FuelTrackingBot:
 
     async def handle_generator_refuel(self, update: Update, match, username: str, photo_url: str = None):
         """Обробка заправки генератора"""
+        if not photo_url:
+            await update.message.reply_text(
+                "⚠️ Помилка: Фото чека обов'язкове для закупівлі палива.\n"
+                "Спробуйте знову."
+            )
+            return
+
         car_number = match.group('car_number')
         
         if not self.validate_generator_number(car_number):
@@ -707,9 +726,8 @@ class FuelTrackingBot:
             
             worksheet.append_row(row_data)
             
-            photo_status = "з фото чека" if photo_url else "без фото"
             await update.message.reply_text(
-                f"✅ Записано: Генератор {car_number} {photo_status}\n"
+                f"✅ Записано: Генератор {car_number} з фото чека\n"
                 f"⛽ Об'єм: {volume} л\n"
                 f"💰 Ціна: {price} грн/л\n"
                 f"💵 Загальна вартість: {total_cost} грн\n"
@@ -754,7 +772,7 @@ class FuelTrackingBot:
                 await update.message.reply_text(
                     "⛽ Введіть об'єм та ціну у форматі:\n"
                     "200 літрів по 58 грн\n\n"
-                    "📸 Також можете додати фото чека разом з повідомленням"
+                    "📸 Також додайте фото чека разом з повідомленням"
                 )
             elif state["step"] == "volume":
                 # Перевірка формату тексту
@@ -807,7 +825,7 @@ class FuelTrackingBot:
                 await update.message.reply_text(
                     "⛽ Введіть об'єм та пробіг у форматі:\n"
                     "30 літрів. Пробіг: 125000 км\n\n"
-                    "📸 Також можете додати фото чека разом з повідомленням"
+                    "📸 Також додайте фото чека разом з повідомленням"
                 )
             elif state["step"] == "volume":
                 match = re.search(r'(\d+)\s*літр[а-яіїєґ]*.*?[Пп]роб[іе]г[:\s]*(\d+)\s*км', text, re.IGNORECASE | re.DOTALL)
@@ -857,7 +875,7 @@ class FuelTrackingBot:
                 await update.message.reply_text(
                     "⛽ Введіть об'єм, ціну та моточаси у форматі:\n"
                     "10 літрів, ціна 60 грн, моточаси: 255\n\n"
-                    "📸 Також можете додати фото чека разом з повідомленням"
+                    "📸 Також додайте фото чека разом з повідомленням"
                 )
             elif state["step"] == "volume":
                 match = re.search(r'(\d+)\s*літр[а-яіїєґ]*.*?ціна\s*(\d+(?:[.,]\d+)?)\s*грн.*?моточаси[:\s]*(\d+)', text, re.IGNORECASE | re.DOTALL)
@@ -966,7 +984,7 @@ class FuelTrackingBot:
         # Запуск бота
         application.run_polling()
 
-# Пример использования
+
 if __name__ == "__main__":
     # Настройте эти параметры
     TELEGRAM_TOKEN = "8188884027:AAE4UprngplID-8bddLp63LwS13HOkRACp8"
