@@ -869,32 +869,43 @@ class FuelTrackingBot:
                 elif state["step"] == "volume":
                     numbers = re.findall(r'\d+(?:[.,]\d+)?', text)
                     if len(numbers) >= 3:
-                        litres, price, hours = numbers[0], numbers[1], numbers[2]
-                        username = update.message.from_user.username or f"{update.message.from_user.first_name} {update.message.from_user.last_name or ''}".strip()
+                        try:
+                            volume = float(numbers[0])
+                            price = float(numbers[1].replace(',', '.'))
+                            hours = int(numbers[2])
+                            
+                            username = update.message.from_user.username or f"{update.message.from_user.first_name} {update.message.from_user.last_name or ''}".strip()
 
-                        # Обработка фото
-                        photo_url = None
-                        if update.message.photo:
-                            try:
-                                photo = update.message.photo[-1]
-                                photo_file = await context.bot.get_file(photo.file_id)
-                                photo_url = photo_file.file_path
-                            except Exception as e:
-                                logger.error(f"Ошибка при получении фото: {e}")
+                            # Обработка фото
+                            photo_url = None
+                            if update.message.photo:
+                                try:
+                                    photo = update.message.photo[-1]
+                                    photo_file = await context.bot.get_file(photo.file_id)
+                                    photo_url = photo_file.file_path
+                                except Exception as e:
+                                    logger.error(f"Ошибка при получении фото: {e}")
 
-                        # Создаем объект match для handle_generator_refuel
-                        match_obj = type('Match', (), {
-                            'group': lambda x: {
-                                'car_number': state["car_number"],
-                                'volume': str(volume),
-                                'price': str(price),
-                                'hours': str(hours)
-                            }[x]
-                        })
+                            # Создаем объект match для handle_generator_refuel
+                            match_obj = type('Match', (), {
+                                'group': lambda x: {
+                                    'car_number': state["car_number"],
+                                    'volume': str(volume),
+                                    'price': str(price),
+                                    'hours': str(hours)
+                                }[x]
+                            })
 
-                        await self.handle_generator_refuel(update, match_obj, username, photo_url)
-                        if user_id in self.user_states:
-                            del self.user_states[user_id]
+                            await self.handle_generator_refuel(update, match_obj, username, photo_url)
+                            if user_id in self.user_states:
+                                del self.user_states[user_id]
+                        except ValueError as e:
+                            logger.error(f"Ошибка при конвертации чисел: {e}")
+                            await update.message.reply_text(
+                                "⚠️ Ошибка: Неправильный формат чисел.\n"
+                                "Пример: 10 литров, цена 60 грн, моточасы: 255"
+                            )
+                            return
                     else:
                         await update.message.reply_text(
                             "⚠️ Ошибка: Неправильный формат.\n"
