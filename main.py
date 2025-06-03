@@ -26,6 +26,8 @@ class FuelTrackingBot:
         self.spreadsheet_id = spreadsheet_id
         self.supported_cars = []
         self.supported_generators = []
+        self.last_sheets_check = None
+        self.sheets_check_interval = 60
 
         # Настройка Google Sheets
         self.scope = [
@@ -973,6 +975,42 @@ class FuelTrackingBot:
                 await self.generator_info(update, context)
                 del self.user_states[user_id]
 
+    async def check_sheets_updates(self):
+        """Проверка обновлений в таблице"""
+        try:
+            current_time = datetime.now()
+            if (self.last_sheets_check is None or 
+                (current_time - self.last_sheets_check).total_seconds() >= self.sheets_check_interval):
+                
+                # Получаем текущие листы
+                all_sheets = self.spreadsheet.worksheets()
+                current_cars = []
+                current_generators = []
+                
+                for sheet in all_sheets:
+                    sheet_name = sheet.title
+                    number_match = re.search(r'\d+', sheet_name)
+                    if number_match:
+                        number = number_match.group(0)
+                        if "Авто" in sheet_name:
+                            current_cars.append(number)
+                        elif "Генератор" in sheet_name:
+                            current_generators.append(number)
+                
+                # Проверяем изменения
+                if set(current_cars) != set(self.supported_cars):
+                    logger.info(f"Обнаружены изменения в списке автомобилей: {current_cars}")
+                    self.supported_cars = current_cars
+                
+                if set(current_generators) != set(self.supported_generators):
+                    logger.info(f"Обнаружены изменения в списке генераторов: {current_generators}")
+                    self.supported_generators = current_generators
+                
+                self.last_sheets_check = current_time
+                
+        except Exception as e:
+            logger.error(f"Ошибка при проверке обновлений таблицы: {e}")
+
     def run(self):
         """Запуск бота"""
         application = Application.builder().token(self.telegram_token).build()
@@ -995,6 +1033,13 @@ class FuelTrackingBot:
             filters.PHOTO,
             self.handle_button_press
         ))
+
+        # Добавляем периодическую проверку обновлений
+        application.job_queue.run_repeating(
+            lambda context: asyncio.create_task(self.check_sheets_updates()),
+            interval=self.sheets_check_interval,
+            first=10
+        )
 
         logger.info("🤖 Бот запущен и готов к работе!")
 
