@@ -87,19 +87,27 @@ class FuelTrackingBot:
         self.user_states = {}
 
     def load_vehicles_and_generators(self):
-        """Загружаем список автомобилей и генераторов из таблицы"""
+        """Загружаем списки автомобилей и генераторов из существующих листов"""
         try:
-            # Создаём или получаем лист с автомобилями
-            vehicles_sheet = self.get_or_create_worksheet("Автомобили")
-            if len(vehicles_sheet.get_all_values()) <= 1:  # Если лист пустой (только заголовки)
-                vehicles_sheet.append_row(["Номер", "Название", "Тип"])
-
-            # Загружаем данные
-            vehicles_data = vehicles_sheet.get_all_records()
-            self.supported_cars = [str(v['Номер']) for v in vehicles_data if v['Тип'] == 'Автомобиль']
-            self.supported_generators = [str(v['Номер']) for v in vehicles_data if v['Тип'] == 'Генератор']
+            # Получаем все листы таблицы
+            all_sheets = self.spreadsheet.worksheets()
             
-            logger.info(f"✅ Загружено {len(self.supported_cars)} автомобилей и {len(self.supported_generators)} генераторов")
+            # Ищем листы с автомобилями и генераторами
+            self.supported_cars = []
+            self.supported_generators = []
+            
+            for sheet in all_sheets:
+                sheet_name = sheet.title
+                # Ищем номер в названии листа
+                number_match = re.search(r'\d+', sheet_name)
+                if number_match:
+                    number = number_match.group(0)
+                    if "Авто" in sheet_name:
+                        self.supported_cars.append(number)
+                    elif "Генератор" in sheet_name:
+                        self.supported_generators.append(number)
+            
+            logger.info(f"✅ Найдено {len(self.supported_cars)} автомобилей и {len(self.supported_generators)} генераторов")
             
         except Exception as e:
             logger.error(f"❌ Ошибка при загрузке списка автомобилей и генераторов: {e}")
@@ -117,15 +125,13 @@ class FuelTrackingBot:
             return False
 
     def get_or_create_worksheet(self, sheet_name: str):
-        """Отримати або створити лист у таблиці"""
+        """Получить или создать лист в таблице"""
         try:
             worksheet = self.spreadsheet.worksheet(sheet_name)
         except gspread.WorksheetNotFound:
             worksheet = self.spreadsheet.add_worksheet(title=sheet_name, rows=1000, cols=10)
-            # Додаємо заголовки в залежності від типу листа
-            if sheet_name == "Автомобили":
-                headers = ["Номер", "Название", "Тип"]
-            elif "Авто" in sheet_name:
+            # Добавляем заголовки в зависимости от типа листа
+            if "Авто" in sheet_name:
                 headers = ["Дата", "Тип операции", "Объём (л)", "Цена за литр", "Общая стоимость", "Пробег",
                            "Пользователь", "Фото"]
             elif "Генератор" in sheet_name:
