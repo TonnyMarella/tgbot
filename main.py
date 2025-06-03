@@ -890,7 +890,7 @@ class FuelTrackingBot:
         application.add_handler(CommandHandler("start", self.start))
         application.add_handler(CommandHandler("templates", self.templates))
         application.add_handler(CommandHandler("balance", self.balance))
-        application.add_handler(CommandHandler("generator_info", self.generator_info))
+        application.add_handler(CommandHandler("generator", self.generator_info))
         application.add_handler(CommandHandler("history", self.history))
 
         # Обработчик кнопок и текстовых сообщений
