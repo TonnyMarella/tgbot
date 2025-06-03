@@ -142,8 +142,9 @@ class FuelTrackingBot:
         # Создаём клавиатуру с кнопками
         keyboard = [
             [KeyboardButton("🟢 Закупка топлива"), KeyboardButton("🔵 Заправка авто")],
-            [KeyboardButton("🟡 Заправка генератора"), KeyboardButton("📊 Остатки")],
-            [KeyboardButton("📈 История"), KeyboardButton("📋 Шаблоны")]
+            [KeyboardButton("🟡 Заправка генератора"), KeyboardButton("⚡ Генератор")],
+            [KeyboardButton("📊 Остатки"), KeyboardButton("📈 История")],
+            [KeyboardButton("📋 Шаблоны")]
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -416,12 +417,25 @@ class FuelTrackingBot:
             )
 
         elif text == "📊 Остатки":
+            self.user_states[user_id] = {"action": "balance", "step": "car_number"}
             await update.message.reply_text(
-                "📊 Введите номер авто для проверки остатка (например: /остаток 5513)"
+                "🚗 Введите номер автомобиля для проверки остатка (например: 5513):\n\n"
+                "💡 Для отмены напишите 'отмена'"
+            )
+
+        elif text == "⚡ Генератор":
+            self.user_states[user_id] = {"action": "generator_info", "step": "car_number"}
+            await update.message.reply_text(
+                "⚡ Введите номер генератора для просмотра информации (например: 5513):\n\n"
+                "💡 Для отмены напишите 'отмена'"
             )
 
         elif text == "📈 История":
-            await self.history(update, context)
+            self.user_states[user_id] = {"action": "history", "step": "car_number"}
+            await update.message.reply_text(
+                "🚗 Введите номер автомобиля для просмотра истории (например: 5513):\n\n"
+                "💡 Для отмены напишите 'отмена'"
+            )
 
         elif text == "📋 Шаблоны":
             await self.templates(update, context)
@@ -880,6 +894,48 @@ class FuelTrackingBot:
                 })
 
                 await self.handle_generator_refuel(update, match_obj, username, photo_url)
+                del self.user_states[user_id]
+
+        elif state["action"] == "history":
+            if state["step"] == "car_number":
+                if not self.validate_car_number(text):
+                    await update.message.reply_text(
+                        f"⚠️ Помилка: Номер автомобіля {text} не підтримується.\n"
+                        f"Доступні номери: {', '.join(self.supported_cars)}"
+                    )
+                    return
+                
+                # Створюємо контекст з аргументами для history
+                context.args = [text]
+                await self.history(update, context)
+                del self.user_states[user_id]
+
+        elif state["action"] == "balance":
+            if state["step"] == "car_number":
+                if not self.validate_car_number(text):
+                    await update.message.reply_text(
+                        f"⚠️ Помилка: Номер автомобіля {text} не підтримується.\n"
+                        f"Доступні номери: {', '.join(self.supported_cars)}"
+                    )
+                    return
+                
+                # Створюємо контекст з аргументами для balance
+                context.args = [text]
+                await self.balance(update, context)
+                del self.user_states[user_id]
+
+        elif state["action"] == "generator_info":
+            if state["step"] == "car_number":
+                if not self.validate_generator_number(text):
+                    await update.message.reply_text(
+                        f"⚠️ Помилка: Номер генератора {text} не підтримується.\n"
+                        f"Доступні номери: {', '.join(self.supported_generators)}"
+                    )
+                    return
+                
+                # Створюємо контекст з аргументами для generator_info
+                context.args = [text]
+                await self.generator_info(update, context)
                 del self.user_states[user_id]
 
     def run(self):
