@@ -141,12 +141,19 @@ class FuelTrackingBot:
 
     def setup_worksheet_headers(self, worksheet):
         """Настройка заголовков для рабочего листа"""
-        headers = ["Дата", "Тип операции", "Объём (л)", "Цена за литр", "Общая стоимость", "Пробег", "Пользователь", "Фото"]
+        sheet_name = worksheet.title
+        
+        if "Генератор" in sheet_name:
+            headers = ["Дата", "Объём (л)", "Цена за литр", "Общая стоимость", "Моточасы", "Пользователь", "Фото"]
+        else:  # для листов с автомобилями
+            headers = ["Дата", "Тип операции", "Объём (л)", "Цена за литр", "Общая стоимость", "Пробег", "Пользователь", "Фото"]
+            
         worksheet.append_row(headers)
         
         # Форматирование заголовков
         try:
-            worksheet.format('A1:H1', {
+            range_to_format = 'A1:H1' if "Генератор" not in sheet_name else 'A1:G1'
+            worksheet.format(range_to_format, {
                 "backgroundColor": {"red": 0.8, "green": 0.8, "blue": 0.8},
                 "textFormat": {"bold": True}
             })
@@ -164,7 +171,7 @@ class FuelTrackingBot:
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-        cars_list = "\n".join([f"🚗 Автомобиль {car}" for car in self.supported_cars])
+        cars_list = "\n".join([f"🚗 Авто {car}" for car in self.supported_cars])
         generators_list = "\n".join([f"⚡ Генератор {gen}" for gen in self.supported_generators])
 
         welcome_message = f"""
@@ -249,7 +256,7 @@ class FuelTrackingBot:
             return
 
         try:
-            worksheet_name = f"Автомобиль {car_number}"
+            worksheet_name = f"Авто {car_number}"
             worksheet = self.get_or_create_worksheet(worksheet_name)
             records = worksheet.get_all_records()
             
@@ -307,7 +314,7 @@ class FuelTrackingBot:
             return
 
         try:
-            worksheet_name = f"Автомобиль {car_number}"
+            worksheet_name = f"Авто {car_number}"
             worksheet = self.get_or_create_worksheet(worksheet_name)
             records = worksheet.get_all_records()
 
@@ -478,7 +485,11 @@ class FuelTrackingBot:
 
         # Если пользователь в процессе многошагового ввода
         if user_id in self.user_states:
-            await self.handle_step_input(update, context)
+            try:
+                await self.handle_step_input(update, context)
+            except KeyError:
+                # Если состояние было удалено в другом месте
+                logger.info(f"Состояние пользователя {user_id} уже было удалено")
             return
 
         # Иначе пробуем автоматически распознать формат
@@ -545,7 +556,7 @@ class FuelTrackingBot:
         total_cost = volume * price
 
         try:
-            worksheet_name = f"Автомобиль {car_number}"
+            worksheet_name = f"Авто {car_number}"
             worksheet = self.get_or_create_worksheet(worksheet_name)
 
             current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -629,7 +640,7 @@ class FuelTrackingBot:
                 await update.message.reply_text("⚠️ Ошибка: Пробег не может быть отрицательным")
                 return
 
-            worksheet_name = f"Автомобиль {car_number}"
+            worksheet_name = f"Авто {car_number}"
             worksheet = self.get_or_create_worksheet(worksheet_name)
             
             current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -752,209 +763,226 @@ class FuelTrackingBot:
         """Обработка пошагового ввода данных"""
         user_id = update.message.from_user.id
         text = update.message.text or update.message.caption
+
+        if user_id not in self.user_states:
+            return
+
         state = self.user_states[user_id]
 
         if text and text.lower() in ["отмена", "cancel", "/cancel"]:
-            del self.user_states[user_id]
-            await update.message.reply_text("❌ Операция отменена.")
+            if user_id in self.user_states:
+                del self.user_states[user_id]
+                await update.message.reply_text("❌ Операция отменена.")
             return
 
-        if state["action"] == "purchase":
-            if state["step"] == "car_number":
-                if not self.validate_car_number(text):
+        try:
+            if state["action"] == "purchase":
+                if state["step"] == "car_number":
+                    if not self.validate_car_number(text):
+                        await update.message.reply_text(
+                            f"⚠️ Ошибка: Номер автомобиля {text} не поддерживается.\n"
+                            f"Доступные номера: {', '.join(self.supported_cars)}"
+                        )
+                        return
+                    state["car_number"] = text
+                    state["step"] = "volume"
                     await update.message.reply_text(
-                        f"⚠️ Ошибка: Номер автомобиля {text} не поддерживается.\n"
-                        f"Доступные номера: {', '.join(self.supported_cars)}"
+                        "⛽ Введите объем и цену в формате:\n"
+                        "200 литров по 58 грн\n\n"
+                        "📸 Также добавьте фото чека к сообщению"
                     )
-                    return
-                state["car_number"] = text
-                state["step"] = "volume"
-                await update.message.reply_text(
-                    "⛽ Введите объем и цену в формате:\n"
-                    "200 литров по 58 грн\n\n"
-                    "📸 Также добавьте фото чека к сообщению"
-                )
-            elif state["step"] == "volume":
-                # Проверка формата текста
-                match = re.search(r'(\d+)\s*литр(?:[а-я]*)?\s*по\s*(\d+(?:[.,]\d+)?)\s*грн', text or "",
-                                  re.IGNORECASE)
-                if not match:
+                elif state["step"] == "volume":
+                    # Проверка формата текста
+                    match = re.search(r'(\d+)\s*литр(?:[а-я]*)?\s*по\s*(\d+(?:[.,]\d+)?)\s*грн', text or "",
+                                      re.IGNORECASE)
+                    if not match:
+                        await update.message.reply_text(
+                            "⚠️ Ошибка: Неправильный формат.\n"
+                            "Пример: 200 литров по 58 грн"
+                        )
+                        return
+
+                    volume = float(match.group(1))
+                    price = float(match.group(2).replace(',', '.'))
+                    username = update.message.from_user.username or f"{update.message.from_user.first_name} {update.message.from_user.last_name or ''}".strip()
+
+                    # Обработка фото
+                    photo_url = None
+                    if update.message.photo:
+                        try:
+                            # Берем самое большое по размеру фото
+                            photo = update.message.photo[-1]
+                            photo_file = await context.bot.get_file(photo.file_id)
+                            photo_url = photo_file.file_path
+                        except Exception as e:
+                            logger.error(f"Ошибка при получении фото: {e}")
+
+                    # Создаем объект match для handle_purchase
+                    match_obj = type('Match', (), {
+                        'group': lambda x: {
+                            'car_number': state["car_number"],
+                            'volume': str(volume),
+                            'price': str(price)
+                        }[x]
+                    })
+
+                    await self.handle_purchase(update, match_obj, username, photo_url)
+                    if user_id in self.user_states:
+                        del self.user_states[user_id]
+
+            elif state["action"] == "refuel":
+                if state["step"] == "car_number":
+                    if not self.validate_car_number(text):
+                        await update.message.reply_text(
+                            f"⚠️ Ошибка: Номер автомобиля {text} не поддерживается.\n"
+                            f"Доступные номера: {', '.join(self.supported_cars)}"
+                        )
+                        return
+                    state["car_number"] = text
+                    state["step"] = "volume"
                     await update.message.reply_text(
-                        "⚠️ Ошибка: Неправильный формат.\n"
-                        "Пример: 200 литров по 58 грн"
+                        "⛽ Введите объем и пробег в формате:\n"
+                        "30 литров. Пробег: 125000 км\n\n"
+                        "📸 Также добавьте фото чека к сообщению"
                     )
-                    return
+                elif state["step"] == "volume":
+                    match = re.search(r'(\d+)\s*литр[а-я]*.*?[Пп]робег[:\s]*(\d+)\s*км', text, re.IGNORECASE | re.DOTALL)
+                    if not match:
+                        await update.message.reply_text(
+                            "⚠️ Ошибка: Неправильный формат.\n"
+                            "Пример: 30 литров. Пробег: 125000 км"
+                        )
+                        return
 
-                volume = float(match.group(1))
-                price = float(match.group(2).replace(',', '.'))
-                username = update.message.from_user.username or f"{update.message.from_user.first_name} {update.message.from_user.last_name or ''}".strip()
+                    volume = float(match.group(1))
+                    mileage = int(match.group(2))
+                    username = update.message.from_user.username or f"{update.message.from_user.first_name} {update.message.from_user.last_name or ''}".strip()
 
-                # Обработка фото
-                photo_url = None
-                if update.message.photo:
-                    try:
-                        # Берем самое большое по размеру фото
-                        photo = update.message.photo[-1]
-                        photo_file = await context.bot.get_file(photo.file_id)
-                        photo_url = photo_file.file_path
-                    except Exception as e:
-                        logger.error(f"Ошибка при получении фото: {e}")
+                    # Обработка фото
+                    photo_url = None
+                    if update.message.photo:
+                        try:
+                            photo = update.message.photo[-1]
+                            photo_file = await context.bot.get_file(photo.file_id)
+                            photo_url = photo_file.file_path
+                        except Exception as e:
+                            logger.error(f"Ошибка при получении фото: {e}")
 
-                # Создаем объект match для handle_purchase
-                match_obj = type('Match', (), {
-                    'group': lambda x: {
-                        'car_number': state["car_number"],
-                        'volume': str(volume),
-                        'price': str(price)
-                    }[x]
-                })
+                    # Создаем объект match для handle_refuel
+                    match_obj = type('Match', (), {
+                        'group': lambda x: {
+                            'car_number': state["car_number"],
+                            'volume': str(volume),
+                            'mileage': str(mileage)
+                        }[x]
+                    })
 
-                await self.handle_purchase(update, match_obj, username, photo_url)
+                    await self.handle_refuel(update, match_obj, username, photo_url)
+                    if user_id in self.user_states:
+                        del self.user_states[user_id]
+
+            elif state["action"] == "generator":
+                if state["step"] == "car_number":
+                    if not self.validate_generator_number(text):
+                        await update.message.reply_text(
+                            f"⚠️ Ошибка: Номер генератора {text} не поддерживается.\n"
+                            f"Доступные номера: {', '.join(self.supported_generators)}"
+                        )
+                        return
+                    state["car_number"] = text
+                    state["step"] = "volume"
+                    await update.message.reply_text(
+                        "⛽ Введите объем, цену и моточасы в формате:\n"
+                        "10 литров, цена 60 грн, моточасы: 255\n\n"
+                        "📸 Также добавьте фото чека к сообщению"
+                    )
+                elif state["step"] == "volume":
+                    match = re.search(r'(\d+)\s*литр[а-я]*.*?цена\s*(\d+(?:[.,]\d+)?)\s*грн.*?моточасы[:\s]*(\d+)', text, re.IGNORECASE | re.DOTALL)
+                    if not match:
+                        await update.message.reply_text(
+                            "⚠️ Ошибка: Неправильный формат.\n"
+                            "Пример: 10 литров, цена 60 грн, моточасы: 255"
+                        )
+                        return
+
+                    volume = float(match.group(1))
+                    price = float(match.group(2).replace(',', '.'))
+                    hours = int(match.group(3))
+                    username = update.message.from_user.username or f"{update.message.from_user.first_name} {update.message.from_user.last_name or ''}".strip()
+
+                    # Обработка фото
+                    photo_url = None
+                    if update.message.photo:
+                        try:
+                            photo = update.message.photo[-1]
+                            photo_file = await context.bot.get_file(photo.file_id)
+                            photo_url = photo_file.file_path
+                        except Exception as e:
+                            logger.error(f"Ошибка при получении фото: {e}")
+
+                    # Создаем объект match для handle_generator_refuel
+                    match_obj = type('Match', (), {
+                        'group': lambda x: {
+                            'car_number': state["car_number"],
+                            'volume': str(volume),
+                            'price': str(price),
+                            'hours': str(hours)
+                        }[x]
+                    })
+
+                    await self.handle_generator_refuel(update, match_obj, username, photo_url)
+                    if user_id in self.user_states:
+                        del self.user_states[user_id]
+
+            elif state["action"] == "history":
+                if state["step"] == "car_number":
+                    if not self.validate_car_number(text):
+                        await update.message.reply_text(
+                            f"⚠️ Ошибка: Номер автомобиля {text} не поддерживается.\n"
+                            f"Доступные номера: {', '.join(self.supported_cars)}"
+                        )
+                        return
+                    
+                    # Создаем контекст с аргументами для history
+                    context.args = [text]
+                    await self.history(update, context)
+                    if user_id in self.user_states:
+                        del self.user_states[user_id]
+
+            elif state["action"] == "balance":
+                if state["step"] == "car_number":
+                    if not self.validate_car_number(text):
+                        await update.message.reply_text(
+                            f"⚠️ Ошибка: Номер автомобиля {text} не поддерживается.\n"
+                            f"Доступные номера: {', '.join(self.supported_cars)}"
+                        )
+                        return
+                    
+                    # Создаем контекст с аргументами для balance
+                    context.args = [text]
+                    await self.balance(update, context)
+                    if user_id in self.user_states:
+                        del self.user_states[user_id]
+
+            elif state["action"] == "generator_info":
+                if state["step"] == "car_number":
+                    if not self.validate_generator_number(text):
+                        await update.message.reply_text(
+                            f"⚠️ Ошибка: Номер генератора {text} не поддерживается.\n"
+                            f"Доступные номера: {', '.join(self.supported_generators)}"
+                        )
+                        return
+                    
+                    # Создаем контекст с аргументами для generator_info
+                    context.args = [text]
+                    await self.generator_info(update, context)
+                    if user_id in self.user_states:
+                        del self.user_states[user_id]
+        except Exception as e:
+            logger.error(f"Ошибка при обработке шага: {e}")
+            if user_id in self.user_states:
                 del self.user_states[user_id]
-
-        elif state["action"] == "refuel":
-            if state["step"] == "car_number":
-                if not self.validate_car_number(text):
-                    await update.message.reply_text(
-                        f"⚠️ Ошибка: Номер автомобиля {text} не поддерживается.\n"
-                        f"Доступные номера: {', '.join(self.supported_cars)}"
-                    )
-                    return
-                state["car_number"] = text
-                state["step"] = "volume"
-                await update.message.reply_text(
-                    "⛽ Введите объем и пробег в формате:\n"
-                    "30 литров. Пробег: 125000 км\n\n"
-                    "📸 Также добавьте фото чека к сообщению"
-                )
-            elif state["step"] == "volume":
-                match = re.search(r'(\d+)\s*литр[а-я]*.*?[Пп]робег[:\s]*(\d+)\s*км', text, re.IGNORECASE | re.DOTALL)
-                if not match:
-                    await update.message.reply_text(
-                        "⚠️ Ошибка: Неправильный формат.\n"
-                        "Пример: 30 литров. Пробег: 125000 км"
-                    )
-                    return
-
-                volume = float(match.group(1))
-                mileage = int(match.group(2))
-                username = update.message.from_user.username or f"{update.message.from_user.first_name} {update.message.from_user.last_name or ''}".strip()
-
-                # Обработка фото
-                photo_url = None
-                if update.message.photo:
-                    try:
-                        photo = update.message.photo[-1]
-                        photo_file = await context.bot.get_file(photo.file_id)
-                        photo_url = photo_file.file_path
-                    except Exception as e:
-                        logger.error(f"Ошибка при получении фото: {e}")
-
-                # Создаем объект match для handle_refuel
-                match_obj = type('Match', (), {
-                    'group': lambda x: {
-                        'car_number': state["car_number"],
-                        'volume': str(volume),
-                        'mileage': str(mileage)
-                    }[x]
-                })
-
-                await self.handle_refuel(update, match_obj, username, photo_url)
-                del self.user_states[user_id]
-
-        elif state["action"] == "generator":
-            if state["step"] == "car_number":
-                if not self.validate_generator_number(text):
-                    await update.message.reply_text(
-                        f"⚠️ Ошибка: Номер генератора {text} не поддерживается.\n"
-                        f"Доступные номера: {', '.join(self.supported_generators)}"
-                    )
-                    return
-                state["car_number"] = text
-                state["step"] = "volume"
-                await update.message.reply_text(
-                    "⛽ Введите объем, цену и моточасы в формате:\n"
-                    "10 литров, цена 60 грн, моточасы: 255\n\n"
-                    "📸 Также добавьте фото чека к сообщению"
-                )
-            elif state["step"] == "volume":
-                match = re.search(r'(\d+)\s*литр[а-я]*.*?цена\s*(\d+(?:[.,]\d+)?)\s*грн.*?моточасы[:\s]*(\d+)', text, re.IGNORECASE | re.DOTALL)
-                if not match:
-                    await update.message.reply_text(
-                        "⚠️ Ошибка: Неправильный формат.\n"
-                        "Пример: 10 литров, цена 60 грн, моточасы: 255"
-                    )
-                    return
-
-                volume = float(match.group(1))
-                price = float(match.group(2).replace(',', '.'))
-                hours = int(match.group(3))
-                username = update.message.from_user.username or f"{update.message.from_user.first_name} {update.message.from_user.last_name or ''}".strip()
-
-                # Обработка фото
-                photo_url = None
-                if update.message.photo:
-                    try:
-                        photo = update.message.photo[-1]
-                        photo_file = await context.bot.get_file(photo.file_id)
-                        photo_url = photo_file.file_path
-                    except Exception as e:
-                        logger.error(f"Ошибка при получении фото: {e}")
-
-                # Создаем объект match для handle_generator_refuel
-                match_obj = type('Match', (), {
-                    'group': lambda x: {
-                        'car_number': state["car_number"],
-                        'volume': str(volume),
-                        'price': str(price),
-                        'hours': str(hours)
-                    }[x]
-                })
-
-                await self.handle_generator_refuel(update, match_obj, username, photo_url)
-                del self.user_states[user_id]
-
-        elif state["action"] == "history":
-            if state["step"] == "car_number":
-                if not self.validate_car_number(text):
-                    await update.message.reply_text(
-                        f"⚠️ Ошибка: Номер автомобиля {text} не поддерживается.\n"
-                        f"Доступные номера: {', '.join(self.supported_cars)}"
-                    )
-                    return
-                
-                # Создаем контекст с аргументами для history
-                context.args = [text]
-                await self.history(update, context)
-                del self.user_states[user_id]
-
-        elif state["action"] == "balance":
-            if state["step"] == "car_number":
-                if not self.validate_car_number(text):
-                    await update.message.reply_text(
-                        f"⚠️ Ошибка: Номер автомобиля {text} не поддерживается.\n"
-                        f"Доступные номера: {', '.join(self.supported_cars)}"
-                    )
-                    return
-                
-                # Создаем контекст с аргументами для balance
-                context.args = [text]
-                await self.balance(update, context)
-                del self.user_states[user_id]
-
-        elif state["action"] == "generator_info":
-            if state["step"] == "car_number":
-                if not self.validate_generator_number(text):
-                    await update.message.reply_text(
-                        f"⚠️ Ошибка: Номер генератора {text} не поддерживается.\n"
-                        f"Доступные номера: {', '.join(self.supported_generators)}"
-                    )
-                    return
-                
-                # Создаем контекст с аргументами для generator_info
-                context.args = [text]
-                await self.generator_info(update, context)
-                del self.user_states[user_id]
+            await update.message.reply_text("⚠️ Произошла ошибка при обработке данных. Попробуйте еще раз.")
 
     async def check_sheets_updates(self):
         """Проверка обновлений в таблице"""
