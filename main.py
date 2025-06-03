@@ -647,7 +647,7 @@ class FuelTrackingBot:
             mileage_diff = mileage - last_mileage if last_mileage > 0 else 0
             # Витрата в літрах на 100 км = (об'єм заправки / різниця пробігу) * 100
             consumption_l_per_100km = (volume / mileage_diff * 100) if mileage_diff > 0 else 0
-            # Витрата в гривнях на 100 км = (об'єм заправки * ціна за літр / різниця пробігу) * 100
+            # Витрата в гривнях на 100 км = (об'єм заправки * ц іна за літр / різниця пробігу) * 100
             consumption_grn_per_100km = (volume * avg_price / mileage_diff * 100) if mileage_diff > 0 else 0
 
             # Форматування photo_url для Google Sheets (клікабельна мініатюра)
@@ -1230,9 +1230,9 @@ class FuelTrackingBot:
 
 if __name__ == "__main__":
     # Настройте эти параметры
-    TELEGRAM_TOKEN = "7459057701:AAEKm0fWRjw57VaVaApwhVNu0lMMAG0N8Jc"
+    TELEGRAM_TOKEN = "8194472971:AAFWvxzVPwdKuiDtqUiA9i8Z4IVTZZJVrYk"
     GOOGLE_SHEETS_CREDENTIALS_PATH = "credentials.json"
-    SPREADSHEET_ID = "1IwuHWYLZaiUPfNFc2YpZg9k5OOVRYX99Nt0V2i5T1lA"
+    SPREADSHEET_ID = "1_vzanyKIgegnNL8xZZqnzq9wMbSWEVBMNUSHwo10p04"
 
     try:
         bot = FuelTrackingBot(
