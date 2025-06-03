@@ -616,7 +616,11 @@ class FuelTrackingBot:
             current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
             # Получаем данные для расчета статистики
-            records = worksheet.get_all_records()
+            try:
+                records = worksheet.get_all_records()
+            except Exception:
+                records = []
+                
             total_purchased = 0
             total_consumed = 0
             last_mileage = 0
@@ -641,8 +645,10 @@ class FuelTrackingBot:
 
             # Расчет расхода
             mileage_diff = mileage - last_mileage if last_mileage > 0 else 0
+            # Витрата в літрах на 100 км = (об'єм заправки / різниця пробігу) * 100
             consumption_l_per_100km = (volume / mileage_diff * 100) if mileage_diff > 0 else 0
-            consumption_grn_per_100km = consumption_l_per_100km * avg_price
+            # Витрата в гривнях на 100 км = (об'єм заправки * ціна за літр / різниця пробігу) * 100
+            consumption_grn_per_100km = (volume * avg_price / mileage_diff * 100) if mileage_diff > 0 else 0
 
             # Форматування photo_url для Google Sheets (клікабельна мініатюра)
             formula = None
@@ -739,6 +745,7 @@ class FuelTrackingBot:
                 records = worksheet.get_all_records()
             except Exception:
                 records = []
+                
             last_hours = 0
             if records:  # Перевіряємо чи є записи
                 for record in reversed(records):
@@ -783,7 +790,7 @@ class FuelTrackingBot:
                 f"💵 Общая стоимость: {total_cost} грн\n"
                 f"🕐 Моточасы: {hours}\n"
                 f"📊 Расход: {consumption_l_per_hour:.2f} л/час\n"
-                f"💸 Расход: {consumption_grn_per_100km:.2f} грн/час"
+                f"💸 Расход: {consumption_grn_per_hour:.2f} грн/час"
             )
             
         except ValueError as e:
