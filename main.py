@@ -1091,7 +1091,7 @@ class FuelTrackingBot:
 
 if __name__ == "__main__":
     # Настройте эти параметры
-    TELEGRAM_TOKEN = "8188884027:AAE4UprngplID-8bddLp63LwS13HOkRACp8"
+    TELEGRAM_TOKEN = "7459057701:AAEKm0fWRjw57VaVaApwhVNu0lMMAG0N8Jc"
     GOOGLE_SHEETS_CREDENTIALS_PATH = "credentials.json"
     SPREADSHEET_ID = "1IwuHWYLZaiUPfNFc2YpZg9k5OOVRYX99Nt0V2i5T1lA"
 
