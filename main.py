@@ -506,13 +506,6 @@ class FuelTrackingBot:
 
     async def handle_purchase(self, update: Update, match, username: str, photo_url: str = None):
         """Обработка закупки топлива"""
-        if not photo_url:
-            await update.message.reply_text(
-                "⚠️ Ошибка: Фото чека обязательно для закупки топлива.\n"
-                "Попробуйте снова."
-            )
-            return
-
         car_number = match.group('car_number')
 
         if not self.validate_car_number(car_number):
@@ -558,7 +551,8 @@ class FuelTrackingBot:
                 worksheet.update_cell(last_row, photo_col, formula)
 
             await update.message.reply_text(
-                f"✅ Принято! {volume} литров по {price} грн добавлено на склад автомобиль {car_number} с фото чека.\n"
+                f"✅ Принято! {volume} литров по {price} грн добавлено на склад автомобиль {car_number}" + 
+                (" с фото чека" if photo_url else "") + f".\n"
                 f"💰 Общая стоимость: {total_cost} грн"
             )
 
@@ -571,27 +565,6 @@ class FuelTrackingBot:
             await update.message.reply_text(
                 "⚠️ Ошибка при сохранении данных. Попробуйте еще раз или обратитесь к администратору."
             )
-
-    # Додатковий метод для обробки лише фото (якщо потрібно)
-    async def handle_photo_only(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработка окремих фото від користувачів"""
-        user_id = update.message.from_user.id
-
-        # Перевіряємо, чи користувач в процесі введення даних
-        if user_id in self.user_states:
-            # Якщо користувач надіслав лише фото без тексту під час введення об'єму
-            state = self.user_states[user_id]
-            if state["action"] == "purchase" and state["step"] == "volume":
-                await update.message.reply_text(
-                    "📸 Фото отримано! Тепер введіть об'єм та ціну:\n"
-                    "Приклад: 200 літрів по 58 грн"
-                )
-                return
-
-        # Якщо фото надіслано поза контекстом
-        await update.message.reply_text(
-            "📸 Фото отримано, але для реєстрації закупівлі використовуйте команду /fuel"
-        )
 
     async def handle_refuel(self, update: Update, match, username: str, photo_url: str = None):
         """Обработка заправки автомобиля"""
@@ -681,7 +654,7 @@ class FuelTrackingBot:
         """Обработка заправки генератора"""
         if not photo_url:
             await update.message.reply_text(
-                "⚠️ Ошибка: Фото чека обязательно для закупки топлива.\n"
+                "⚠️ Ошибка: Фото чека обязательно для заправки генератора.\n"
                 "Попробуйте снова."
             )
             return
@@ -793,35 +766,20 @@ class FuelTrackingBot:
                     state["step"] = "volume"
                     await update.message.reply_text(
                         "⛽ Введите объем и цену в формате:\n"
-                        "200 литров по 58 грн"
+                        "200 литров по 58 грн\n\n"
+                        "📸 После ввода данных вы можете:\n"
+                        "• Отправить фото чека\n"
+                        "• Написать 'нет' если чек не нужен"
                     )
                 elif state["step"] == "volume":
-                    # Проверка формата текста
-                    match = re.search(r'(\d+).*?(\d+(?:[.,]\d+)?)\s*', text or "", re.IGNORECASE | re.DOTALL)
-                    if not match:
-                        await update.message.reply_text(
-                            "⚠️ Ошибка: Неправильный формат.\n"
-                            "Пример: 200 литров по 58 грн"
-                        )
+                    # Проверяем, не фото ли это
+                    if update.message.photo or (update.message.document and update.message.document.mime_type and update.message.document.mime_type.startswith('image/')):
+                        state["step"] = "waiting_photo"
+                        await self.handle_step_input(update, context)
                         return
 
-                    volume = float(match.group(1))
-                    price = float(match.group(2).replace(',', '.'))
-                    state["volume"] = volume
-                    state["price"] = price
-                    state["step"] = "photo_question"
-                    await update.message.reply_text(
-                        "📸 Будете ли вы прикреплять чек?\n"
-                        "Ответьте 'да' или 'нет'"
-                    )
-                elif state["step"] == "photo_question":
-                    if text.lower() in ["да", "yes", "y"]:
-                        state["step"] = "waiting_photo"
-                        await update.message.reply_text(
-                            "📸 Пожалуйста, отправьте фото чека.\n"
-                            "Вы можете отправить фото или документ-изображение."
-                        )
-                    elif text.lower() in ["нет", "no", "n"]:
+                    # Проверяем, не "нет" ли это
+                    if text and text.lower() in ["нет", "no", "n"]:
                         username = update.message.from_user.username or f"{update.message.from_user.first_name} {update.message.from_user.last_name or ''}".strip()
                         
                         # Создаем объект match для handle_purchase
@@ -836,10 +794,27 @@ class FuelTrackingBot:
                         await self.handle_purchase(update, match_obj, username)
                         if user_id in self.user_states:
                             del self.user_states[user_id]
-                    else:
+                        return
+
+                    # Проверка формата текста
+                    match = re.search(r'(\d+).*?(\d+(?:[.,]\d+)?)\s*', text or "", re.IGNORECASE | re.DOTALL)
+                    if not match:
                         await update.message.reply_text(
-                            "⚠️ Пожалуйста, ответьте 'да' или 'нет'"
+                            "⚠️ Ошибка: Неправильный формат.\n"
+                            "Пример: 200 литров по 58 грн"
                         )
+                        return
+
+                    volume = float(match.group(1))
+                    price = float(match.group(2).replace(',', '.'))
+                    state["volume"] = volume
+                    state["price"] = price
+                    state["step"] = "waiting_photo"
+                    await update.message.reply_text(
+                        "📸 Теперь вы можете:\n"
+                        "• Отправить фото чека\n"
+                        "• Написать 'нет' если чек не нужен"
+                    )
                 elif state["step"] == "waiting_photo":
                     username = update.message.from_user.username or f"{update.message.from_user.first_name} {update.message.from_user.last_name or ''}".strip()
                     
@@ -860,10 +835,25 @@ class FuelTrackingBot:
                             logger.error(f"Ошибка при получении документа-скриншота: {e}")
 
                     if not photo_url:
-                        await update.message.reply_text(
-                            "⚠️ Не удалось получить фото. Пожалуйста, попробуйте еще раз или напишите 'отмена'"
-                        )
-                        return
+                        if text and text.lower() in ["нет", "no", "n"]:
+                            # Создаем объект match для handle_purchase
+                            match_obj = type('Match', (), {
+                                'group': lambda x: {
+                                    'car_number': state["car_number"],
+                                    'volume': str(state["volume"]),
+                                    'price': str(state["price"])
+                                }[x]
+                            })
+
+                            await self.handle_purchase(update, match_obj, username)
+                            if user_id in self.user_states:
+                                del self.user_states[user_id]
+                            return
+                        else:
+                            await update.message.reply_text(
+                                "⚠️ Не удалось получить фото. Пожалуйста, попробуйте еще раз или напишите 'нет'"
+                            )
+                            return
 
                     # Создаем объект match для handle_purchase
                     match_obj = type('Match', (), {
@@ -905,37 +895,11 @@ class FuelTrackingBot:
                     mileage = int(match.group(2))
                     state["volume"] = volume
                     state["mileage"] = mileage
-                    state["step"] = "photo_question"
+                    state["step"] = "waiting_photo"
                     await update.message.reply_text(
-                        "📸 Будете ли вы прикреплять чек?\n"
-                        "Ответьте 'да' или 'нет'"
+                        "📸 Пожалуйста, отправьте фото чека.\n"
+                        "Фото чека обязательно для заправки автомобиля."
                     )
-                elif state["step"] == "photo_question":
-                    if text.lower() in ["да", "yes", "y"]:
-                        state["step"] = "waiting_photo"
-                        await update.message.reply_text(
-                            "📸 Пожалуйста, отправьте фото чека.\n"
-                            "Вы можете отправить фото или документ-изображение."
-                        )
-                    elif text.lower() in ["нет", "no", "n"]:
-                        username = update.message.from_user.username or f"{update.message.from_user.first_name} {update.message.from_user.last_name or ''}".strip()
-                        
-                        # Создаем объект match для handle_refuel
-                        match_obj = type('Match', (), {
-                            'group': lambda x: {
-                                'car_number': state["car_number"],
-                                'volume': str(state["volume"]),
-                                'mileage': str(state["mileage"])
-                            }[x]
-                        })
-
-                        await self.handle_refuel(update, match_obj, username)
-                        if user_id in self.user_states:
-                            del self.user_states[user_id]
-                    else:
-                        await update.message.reply_text(
-                            "⚠️ Пожалуйста, ответьте 'да' или 'нет'"
-                        )
                 elif state["step"] == "waiting_photo":
                     username = update.message.from_user.username or f"{update.message.from_user.first_name} {update.message.from_user.last_name or ''}".strip()
                     
@@ -957,7 +921,8 @@ class FuelTrackingBot:
 
                     if not photo_url:
                         await update.message.reply_text(
-                            "⚠️ Не удалось получить фото. Пожалуйста, попробуйте еще раз или напишите 'отмена'"
+                            "⚠️ Не удалось получить фото. Пожалуйста, попробуйте еще раз.\n"
+                            "Фото чека обязательно для заправки автомобиля."
                         )
                         return
 
@@ -999,10 +964,10 @@ class FuelTrackingBot:
                             state["volume"] = volume
                             state["price"] = price
                             state["hours"] = hours
-                            state["step"] = "photo_question"
+                            state["step"] = "waiting_photo"
                             await update.message.reply_text(
-                                "📸 Будете ли вы прикреплять чек?\n"
-                                "Ответьте 'да' или 'нет'"
+                                "📸 Пожалуйста, отправьте фото чека.\n"
+                                "Фото чека обязательно для заправки генератора."
                             )
                         except ValueError as e:
                             logger.error(f"Ошибка при конвертации чисел: {e}")
@@ -1017,33 +982,6 @@ class FuelTrackingBot:
                             "Пример: 10 литров, цена 60 грн, моточасы: 255"
                         )
                         return
-                elif state["step"] == "photo_question":
-                    if text.lower() in ["да", "yes", "y"]:
-                        state["step"] = "waiting_photo"
-                        await update.message.reply_text(
-                            "📸 Пожалуйста, отправьте фото чека.\n"
-                            "Вы можете отправить фото или документ-изображение."
-                        )
-                    elif text.lower() in ["нет", "no", "n"]:
-                        username = update.message.from_user.username or f"{update.message.from_user.first_name} {update.message.from_user.last_name or ''}".strip()
-                        
-                        # Создаем объект match для handle_generator_refuel
-                        match_obj = type('Match', (), {
-                            'group': lambda x: {
-                                'car_number': state["car_number"],
-                                'volume': str(state["volume"]),
-                                'price': str(state["price"]),
-                                'hours': str(state["hours"])
-                            }[x]
-                        })
-
-                        await self.handle_generator_refuel(update, match_obj, username)
-                        if user_id in self.user_states:
-                            del self.user_states[user_id]
-                    else:
-                        await update.message.reply_text(
-                            "⚠️ Пожалуйста, ответьте 'да' или 'нет'"
-                        )
                 elif state["step"] == "waiting_photo":
                     username = update.message.from_user.username or f"{update.message.from_user.first_name} {update.message.from_user.last_name or ''}".strip()
                     
@@ -1065,7 +1003,8 @@ class FuelTrackingBot:
 
                     if not photo_url:
                         await update.message.reply_text(
-                            "⚠️ Не удалось получить фото. Пожалуйста, попробуйте еще раз или напишите 'отмена'"
+                            "⚠️ Не удалось получить фото. Пожалуйста, попробуйте еще раз.\n"
+                            "Фото чека обязательно для заправки генератора."
                         )
                         return
 
