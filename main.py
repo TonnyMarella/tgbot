@@ -786,6 +786,12 @@ class FuelTrackingBot:
                             photo_url = photo_file.file_path
                         except Exception as e:
                             logger.error(f"Ошибка при получении фото: {e}")
+                    elif update.message.document and update.message.document.mime_type and update.message.document.mime_type.startswith('image/'):
+                        try:
+                            doc_file = await context.bot.get_file(update.message.document.file_id)
+                            photo_url = doc_file.file_path
+                        except Exception as e:
+                            logger.error(f"Ошибка при получении документа-скриншота: {e}")
 
                     # Создаем объект match для handle_purchase
                     match_obj = type('Match', (), {
@@ -1027,6 +1033,12 @@ class FuelTrackingBot:
         # Обработчик фотографий с подписями
         application.add_handler(MessageHandler(
             filters.PHOTO,
+            self.handle_button_press
+        ))
+
+        # Обработчик документов-изображений (скриншотов)
+        application.add_handler(MessageHandler(
+            filters.Document.IMAGE,
             self.handle_button_press
         ))
 
