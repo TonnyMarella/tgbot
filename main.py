@@ -144,15 +144,15 @@ class FuelTrackingBot:
         sheet_name = worksheet.title
         
         if "Генератор" in sheet_name:
-            headers = ["Дата", "Объём (л)", "Цена за литр", "Общая стоимость", "Моточасы", "Пользователь", "Фото"]
+            headers = ["Дата", "Объём (л)", "Цена за литр", "Общая стоимость", "Моточасы", "Пользователь", "Фото", "Расход л/час", "Расход грн/час"]
         else:  # для листов с автомобилями
-            headers = ["Дата", "Тип операции", "Объём (л)", "Цена за литр", "Общая стоимость", "Пробег", "Пользователь", "Фото"]
+            headers = ["Дата", "Тип операции", "Объём (л)", "Цена за литр", "Общая стоимость", "Пробег", "Пользователь", "Фото", "Остаток топлива", "Расход л/100км", "Расход грн/100км"]
             
         worksheet.append_row(headers)
         
         # Форматирование заголовков
         try:
-            range_to_format = 'A1:H1' if "Генератор" not in sheet_name else 'A1:G1'
+            range_to_format = 'A1:K1' if "Генератор" not in sheet_name else 'A1:I1'
             worksheet.format(range_to_format, {
                 "backgroundColor": {"red": 0.8, "green": 0.8, "blue": 0.8},
                 "textFormat": {"bold": True}
@@ -518,12 +518,22 @@ class FuelTrackingBot:
         volume = float(match.group('volume'))
         price = float(match.group('price').replace(',', '.'))
         total_cost = volume * price
+        current_balance = volume  # Початковий баланс - це об'єм закупки
 
         try:
             worksheet_name = f"Авто {car_number}"
             worksheet = self.get_or_create_worksheet(worksheet_name)
 
             current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            # Получаем текущие данные для расчета остатка
+            try:
+                records = worksheet.get_all_records()
+            except Exception:
+                records = []
+            total_purchased = sum(float(r.get('Объём (л)', 0) or 0) for r in records if r.get('Тип операции') == 'Закупка')
+            total_consumed = sum(float(r.get('Объём (л)', 0) or 0) for r in records if r.get('Тип операции') == 'Заправка')
+            current_balance = total_purchased - total_consumed + volume
 
             # Форматування photo_url для Google Sheets (клікабельна мініатюра)
             formula = None
@@ -539,7 +549,10 @@ class FuelTrackingBot:
                 total_cost,
                 "",  # Пробег не применим для закупки
                 username,
-                photo_url if photo_url else ""
+                photo_url if photo_url else "",
+                current_balance,  # Остаток топлива
+                "",  # Расход л/100км не применим для закупки
+                ""   # Расход грн/100км не применим для закупки
             ]
 
             worksheet.append_row(row_data)
@@ -547,13 +560,14 @@ class FuelTrackingBot:
             # Якщо є фото, оновлюємо клітинку на формулу
             if formula:
                 last_row = len(worksheet.get_all_values())
-                photo_col = len(row_data)  # фото завжди останнє поле
+                photo_col = 8
                 worksheet.update_cell(last_row, photo_col, formula)
 
             await update.message.reply_text(
                 f"✅ Принято! {volume} литров по {price} грн добавлено на склад автомобиль {car_number}" + 
                 (" с фото чека" if photo_url else "") + f".\n"
-                f"💰 Общая стоимость: {total_cost} грн"
+                f"💰 Общая стоимость: {total_cost} грн\n"
+                f"📊 Остаток на складе: {current_balance:.1f} л"
             )
 
             # Очищаем состояние пользователя
@@ -601,6 +615,35 @@ class FuelTrackingBot:
             
             current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+            # Получаем данные для расчета статистики
+            records = worksheet.get_all_records()
+            total_purchased = 0
+            total_consumed = 0
+            last_mileage = 0
+            avg_price = 0
+
+            if records:  # Перевіряємо чи є записи
+                total_purchased = sum(float(r.get('Объём (л)', 0) or 0) for r in records if r.get('Тип операции') == 'Закупка')
+                total_consumed = sum(float(r.get('Объём (л)', 0) or 0) for r in records if r.get('Тип операции') == 'Заправка')
+                
+                # Получаем последний пробег для расчета расхода
+                for record in reversed(records):
+                    if record.get('Тип операции') == 'Заправка' and record.get('Пробег'):
+                        last_mileage = int(record.get('Пробег', 0) or 0)
+                        break
+
+                # Получаем среднюю цену топлива
+                price_records = [r for r in records if r.get('Тип операции') == 'Закупка' and r.get('Цена за литр')]
+                if price_records:
+                    avg_price = sum(float(r.get('Цена за литр', 0) or 0) for r in price_records) / len(price_records)
+
+            current_balance = total_purchased - total_consumed - volume
+
+            # Расчет расхода
+            mileage_diff = mileage - last_mileage if last_mileage > 0 else 0
+            consumption_l_per_100km = (volume / mileage_diff * 100) if mileage_diff > 0 else 0
+            consumption_grn_per_100km = consumption_l_per_100km * avg_price
+
             # Форматування photo_url для Google Sheets (клікабельна мініатюра)
             formula = None
             if photo_url:
@@ -614,27 +657,26 @@ class FuelTrackingBot:
                 "",  # Общая стоимость не применима для заправки
                 mileage,
                 username,
-                photo_url if photo_url else ""
+                photo_url if photo_url else "",
+                current_balance,  # Остаток топлива
+                consumption_l_per_100km,  # Расход л/100км
+                consumption_grn_per_100km  # Расход грн/100км
             ]
             
             worksheet.append_row(row_data)
             
-            # Получаем остаток после заправки
-            records = worksheet.get_all_records()
-            total_purchased = sum(float(r.get('Объём (л)', 0) or 0) for r in records if r.get('Тип операции') == 'Закупка')
-            total_consumed = sum(float(r.get('Объём (л)', 0) or 0) for r in records if r.get('Тип операции') == 'Заправка')
-            balance = total_purchased - total_consumed
-            
             # Якщо є фото, оновлюємо клітинку на формулу
             if formula:
                 last_row = len(worksheet.get_all_values())
-                photo_col = len(row_data)  # фото завжди останнє поле
+                photo_col = 8
                 worksheet.update_cell(last_row, photo_col, formula)
 
             await update.message.reply_text(
                 f"✅ Заправка {volume} л записана с фото чека.\n"
                 f"📏 Пробег: {mileage} км\n"
-                f"📊 Остаток на складе: {balance:.1f} л"
+                f"📊 Остаток на складе: {current_balance:.1f} л\n"
+                f"⛽ Расход: {consumption_l_per_100km:.1f} л/100км\n"
+                f"💰 Расход: {consumption_grn_per_100km:.2f} грн/100км"
             )
             
         except ValueError as e:
@@ -692,6 +734,23 @@ class FuelTrackingBot:
             
             current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+            # Получаем данные для расчета расхода
+            try:
+                records = worksheet.get_all_records()
+            except Exception:
+                records = []
+            last_hours = 0
+            if records:  # Перевіряємо чи є записи
+                for record in reversed(records):
+                    if record.get('Моточасы'):
+                        last_hours = int(record.get('Моточасы', 0) or 0)
+                        break
+
+            # Расчет расхода
+            hours_diff = hours - last_hours if last_hours > 0 else 0
+            consumption_l_per_hour = volume / hours_diff if hours_diff > 0 else 0
+            consumption_grn_per_hour = consumption_l_per_hour * price
+
             # Форматування photo_url для Google Sheets (клікабельна мініатюра)
             formula = None
             if photo_url:
@@ -704,7 +763,9 @@ class FuelTrackingBot:
                 total_cost,
                 hours,
                 username,
-                photo_url if photo_url else ""
+                photo_url if photo_url else "",
+                consumption_l_per_hour,  # Расход л/час
+                consumption_grn_per_hour  # Расход грн/час
             ]
             
             worksheet.append_row(row_data)
@@ -712,7 +773,7 @@ class FuelTrackingBot:
             # Якщо є фото, оновлюємо клітинку на формулу
             if formula:
                 last_row = len(worksheet.get_all_values())
-                photo_col = len(row_data)  # фото завжди останнє поле
+                photo_col = 7
                 worksheet.update_cell(last_row, photo_col, formula)
 
             await update.message.reply_text(
@@ -720,7 +781,9 @@ class FuelTrackingBot:
                 f"⛽ Объем: {volume} л\n"
                 f"💰 Цена: {price} грн/л\n"
                 f"💵 Общая стоимость: {total_cost} грн\n"
-                f"🕐 Моточасы: {hours}"
+                f"🕐 Моточасы: {hours}\n"
+                f"📊 Расход: {consumption_l_per_hour:.2f} л/час\n"
+                f"💸 Расход: {consumption_grn_per_100km:.2f} грн/час"
             )
             
         except ValueError as e:
