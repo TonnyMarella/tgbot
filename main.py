@@ -27,7 +27,7 @@ class FuelTrackingBot:
         self.supported_cars = []
         self.supported_generators = []
         self.last_sheets_check = None
-        self.sheets_check_interval = 60
+        self.sheets_check_interval = 10
 
         # Настройка Google Sheets
         self.scope = [
@@ -130,20 +130,28 @@ class FuelTrackingBot:
         """Получить или создать лист в таблице"""
         try:
             worksheet = self.spreadsheet.worksheet(sheet_name)
+            # Проверяем, есть ли заголовки
+            if len(worksheet.get_all_values()) == 0:
+                self.setup_worksheet_headers(worksheet)
         except gspread.WorksheetNotFound:
             worksheet = self.spreadsheet.add_worksheet(title=sheet_name, rows=1000, cols=10)
-            # Добавляем заголовки в зависимости от типа листа
-            if "Авто" in sheet_name:
-                headers = ["Дата", "Тип операции", "Объём (л)", "Цена за литр", "Общая стоимость", "Пробег",
-                           "Пользователь", "Фото"]
-            elif "Генератор" in sheet_name:
-                headers = ["Дата", "Объём (л)", "Цена за литр", "Общая стоимость", "Моточасы", "Пользователь", "Фото"]
-            else:
-                headers = ["Данные"]
-
-            worksheet.append_row(headers)
+            self.setup_worksheet_headers(worksheet)
 
         return worksheet
+
+    def setup_worksheet_headers(self, worksheet):
+        """Настройка заголовков для рабочего листа"""
+        headers = ["Дата", "Тип операции", "Объём (л)", "Цена за литр", "Общая стоимость", "Пробег", "Пользователь", "Фото"]
+        worksheet.append_row(headers)
+        
+        # Форматирование заголовков
+        try:
+            worksheet.format('A1:H1', {
+                "backgroundColor": {"red": 0.8, "green": 0.8, "blue": 0.8},
+                "textFormat": {"bold": True}
+            })
+        except Exception as e:
+            logger.error(f"Ошибка при форматировании заголовков: {e}")
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Команда /start"""
@@ -591,33 +599,6 @@ class FuelTrackingBot:
             "📸 Фото отримано, але для реєстрації закупівлі використовуйте команду /fuel"
         )
 
-    # Метод для налаштування заголовків таблиці
-    def setup_worksheet_headers(self, worksheet):
-        """Налаштування заголовків для робочого листа"""
-        headers = [
-            "Дата/Час",
-            "Тип операції",
-            "Об'єм (л)",
-            "Ціна за літр (грн)",
-            "Загальна вартість (грн)",
-            "Пробег (км)",
-            "Користувач",
-            "Фото чека"
-        ]
-
-        # Перевіряємо, чи є заголовки
-        if not worksheet.get_all_values():
-            worksheet.append_row(headers)
-
-            # Форматування заголовків (опціонально, якщо підтримується)
-            try:
-                worksheet.format('A1:H1', {
-                    "backgroundColor": {"red": 0.8, "green": 0.8, "blue": 0.8},
-                    "textFormat": {"bold": True}
-                })
-            except:
-                pass
-
     async def handle_refuel(self, update: Update, match, username: str, photo_url: str = None):
         """Обработка заправки автомобиля"""
         if not photo_url:
@@ -994,8 +975,16 @@ class FuelTrackingBot:
                         number = number_match.group(0)
                         if "Авто" in sheet_name:
                             current_cars.append(number)
+                            # Проверяем и добавляем заголовки если нужно
+                            if len(sheet.get_all_values()) == 0:
+                                self.setup_worksheet_headers(sheet)
+                                logger.info(f"Добавлены заголовки для листа {sheet_name}")
                         elif "Генератор" in sheet_name:
                             current_generators.append(number)
+                            # Проверяем и добавляем заголовки если нужно
+                            if len(sheet.get_all_values()) == 0:
+                                self.setup_worksheet_headers(sheet)
+                                logger.info(f"Добавлены заголовки для листа {sheet_name}")
                 
                 # Проверяем изменения
                 if set(current_cars) != set(self.supported_cars):
