@@ -380,16 +380,12 @@ class FuelTrackingBot:
 
             # Получаем последние 5 записей
             last_records = records[-5:]
-            total_volume = sum(float(r.get('Объём (л)', 0) or 0) for r in records)
-            total_cost = sum(float(r.get('Общая стоимость', 0) or 0) for r in records)
             last_hours = int(last_records[-1].get('Моточасы', 0) or 0)
             
             message = f"""
 ⚡ Статистика по генератору {generator_number}:
 
 📊 Общая статистика:
-⛽ Общий объем: {total_volume:.1f} л
-💰 Общая стоимость: {total_cost:.2f} грн
 🕐 Последние моточасы: {last_hours}
 
 📈 Последние 5 заправок:
@@ -867,16 +863,16 @@ class FuelTrackingBot:
                         return
 
                     # Проверка формата текста
-                    match = re.search(r'(\d+).*?(\d+(?:[.,]\d+)?)\s*', text or "", re.IGNORECASE | re.DOTALL)
-                    if not match:
+                    numbers = re.findall(r'\d+(?:[.,]\d+)?', text)
+                    if len(numbers) != 2:
                         await update.message.reply_text(
                             "⚠️ Ошибка: Неправильный формат.\n"
                             "Пример: 200 литров по 58 грн"
                         )
                         return
 
-                    volume = float(match.group(1))
-                    price = float(match.group(2).replace(',', '.'))
+                    volume = numbers[0]
+                    price = numbers[1]
                     state["volume"] = volume
                     state["price"] = price
                     state["step"] = "waiting_photo"
@@ -953,16 +949,16 @@ class FuelTrackingBot:
                         "30 литров. Пробег: 125000 км"
                     )
                 elif state["step"] == "volume":
-                    match = re.search(r'(\d+).*?(\d+)\s*', text, re.IGNORECASE | re.DOTALL)
-                    if not match:
+                    numbers = re.findall(r'\d+(?:[.,]\d+)?', text)
+                    if len(numbers) != 2:
                         await update.message.reply_text(
                             "⚠️ Ошибка: Неправильный формат.\n"
                             "Пример: 30 литров. Пробег: 125000 км"
                         )
                         return
 
-                    volume = float(match.group(1))
-                    mileage = int(match.group(2))
+                    volume = numbers[0]
+                    mileage = numbers[1]
                     state["volume"] = volume
                     state["mileage"] = mileage
                     state["step"] = "waiting_photo"
